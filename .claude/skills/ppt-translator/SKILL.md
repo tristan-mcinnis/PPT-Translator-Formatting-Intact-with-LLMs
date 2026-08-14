@@ -40,18 +40,19 @@ cd .claude/skills/ppt-translator/scripts
 source .venv/bin/activate
 
 python main.py /path/to/presentation.pptx \
-  --provider openai \
   --source-lang zh \
   --target-lang en
 ```
+
+(The default provider is DeepSeek `deepseek-v4-flash`.)
 
 ## Provider Configuration
 
 | Provider  | Environment Variable | Default Model              |
 |-----------|---------------------|----------------------------|
+| deepseek  | `DEEPSEEK_API_KEY`  | `deepseek-v4-flash`        |
 | openai    | `OPENAI_API_KEY`    | `gpt-5.2-2025-12-11`       |
 | anthropic | `ANTHROPIC_API_KEY` | `claude-sonnet-4-5-20250514` |
-| deepseek  | `DEEPSEEK_API_KEY`  | `deepseek-chat`            |
 | grok      | `GROK_API_KEY`      | `grok-4.1-fast`            |
 | gemini    | `GEMINI_API_KEY`    | `gemini-3-flash-preview`   |
 
@@ -59,7 +60,7 @@ python main.py /path/to/presentation.pptx \
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--provider` | LLM provider: `openai`, `anthropic`, `deepseek`, `grok`, `gemini` | `openai` |
+| `--provider` | LLM provider: `deepseek`, `openai`, `anthropic`, `grok`, `gemini` | `deepseek` |
 | `--model` | Override default model for provider | Provider default |
 | `--source-lang` | Source language ISO code | `zh` |
 | `--target-lang` | Target language ISO code | `en` |

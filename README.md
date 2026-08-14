@@ -27,8 +27,11 @@ Convert your PowerPoint presentations to beautifully translated documents while 
 
 ## 🆕 Recent Updates
 
+- **DeepSeek V4 default**: DeepSeek is now the default provider using `deepseek-v4-flash` (fast, cheap); `deepseek-v4-pro` also available
+- **Batch translation**: All text on a slide is translated in one JSON-mode request instead of one API call per shape
+- **Script-aware filtering**: Text already in the target script (e.g. English on a zh → en run) is left untouched, saving tokens and avoiding double translation
 - **Gemini support**: Added Google Gemini as a translation provider
-- **Updated model defaults**: Now using latest model versions (GPT-5.2, Claude Sonnet 4.5, Grok 4.1)
+- **Updated model defaults**: Now using latest model versions (DeepSeek V4 Flash, GPT-5.2, Claude Sonnet 4.5, Grok 4.1)
 - **Security fix**: Replaced unsafe `eval()` with safe lookup functions
 
 ## 📦 Requirements
@@ -58,11 +61,13 @@ Environment variables of interest:
 
 | Provider  | Required variable         | Optional variables                 | Default model                   |
 |-----------|---------------------------|------------------------------------|---------------------------------|
-| DeepSeek  | `DEEPSEEK_API_KEY`        | `DEEPSEEK_API_BASE`                | `deepseek-chat`                 |
+| DeepSeek  | `DEEPSEEK_API_KEY`        | `DEEPSEEK_API_BASE`                | `deepseek-v4-flash`             |
 | OpenAI    | `OPENAI_API_KEY`          | `OPENAI_ORG`                       | `gpt-5.2-2025-12-11`            |
 | Anthropic | `ANTHROPIC_API_KEY`       | —                                  | `claude-sonnet-4-5-20250514`    |
 | Grok      | `GROK_API_KEY`            | `GROK_API_BASE`                    | `grok-4.1-fast`                 |
 | Gemini    | `GEMINI_API_KEY`          | —                                  | `gemini-3-flash-preview`        |
+
+> 💡 **Default provider is DeepSeek** (`deepseek-v4-flash`). Just set `DEEPSEEK_API_KEY` and run — no `--provider` flag needed.
 
 > 📝 The CLI reads your `.env` file automatically when run from a shell session that has the variables exported. On macOS you can add the exports to `~/.zshrc` or use `direnv` for project-specific secrets.
 
@@ -72,12 +77,12 @@ Run the CLI with the path to a single presentation or a directory tree:
 
 ```bash
 python main.py /path/to/decks \
-  --provider openai \
-  --model gpt-5-mini \
   --source-lang zh \
   --target-lang en \
   --max-workers 4
 ```
+
+(The default provider is DeepSeek `deepseek-v4-flash`. To use another provider, pass `--provider openai --model gpt-5-mini` and so on.)
 
 Common options:
 

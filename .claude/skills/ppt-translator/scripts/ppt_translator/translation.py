@@ -1,11 +1,13 @@
 """Translation service orchestrating providers, caching and chunking."""
 from __future__ import annotations
 
+import hashlib
 import re
 import threading
 from typing import Dict, List
 
 from .providers.base import TranslationProvider
+from .utils import needs_translation
 
 _SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?。！？])\s+")
 
@@ -19,14 +21,23 @@ class TranslationService:
         self._cache: Dict[str, str] = {}
         self._lock = threading.Lock()
 
+    @staticmethod
+    def _cache_key(text: str, source_lang: str, target_lang: str) -> str:
+        """Cache key includes the language pair so results never leak across runs."""
+        payload = "\x1f".join([source_lang.lower(), target_lang.lower(), text])
+        return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
     def translate(self, text: str, source_lang: str, target_lang: str) -> str:
         """Translate ``text`` and cache repeated requests."""
         if not text or text.isspace():
             return text
+        if not needs_translation(text, source_lang):
+            return text
 
+        key = self._cache_key(text, source_lang, target_lang)
         with self._lock:
-            if text in self._cache:
-                return self._cache[text]
+            if key in self._cache:
+                return self._cache[key]
 
         chunks = self.chunk_text(text, self.max_chunk_size)
         translated_chunks: List[str] = []
@@ -43,8 +54,59 @@ class TranslationService:
             combined = text
 
         with self._lock:
-            self._cache[text] = combined
+            self._cache[key] = combined
         return combined
+
+    def translate_many(
+        self,
+        texts: List[str],
+        source_lang: str,
+        target_lang: str,
+    ) -> Dict[str, str]:
+        """Translate a list of texts in one provider batch call.
+
+        Falls back to per-text translation for anything the provider's batch
+        path cannot handle. Results are cached like :meth:`translate`.
+
+        Args:
+            texts: Texts to translate.
+            source_lang: Source language code.
+            target_lang: Target language code.
+
+        Returns:
+            Mapping from original text to translation.
+        """
+        results: Dict[str, str] = {}
+        to_translate: List[str] = []
+
+        for text in texts:
+            if not text or text.isspace() or not needs_translation(text, source_lang):
+                results[text] = text
+                continue
+            key = self._cache_key(text, source_lang, target_lang)
+            with self._lock:
+                cached = self._cache.get(key)
+            if cached is not None:
+                results[text] = cached
+            else:
+                to_translate.append(text)
+
+        if to_translate:
+            try:
+                batch = self.provider.translate_batch(to_translate, source_lang, target_lang)
+            except Exception:
+                batch = {text: self.provider.translate(text, source_lang, target_lang) for text in to_translate}
+
+            for text in to_translate:
+                translation = batch.get(text, text)
+                if not translation or translation.isspace():
+                    translation = text
+                results[text] = translation
+                key = self._cache_key(text, source_lang, target_lang)
+                with self._lock:
+                    self._cache[key] = translation
+
+        return results
 
     @staticmethod
     def chunk_text(text: str, max_chunk_size: int = 1000) -> List[str]:

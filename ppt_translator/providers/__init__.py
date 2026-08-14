@@ -18,8 +18,10 @@ PROVIDER_REGISTRY: Dict[str, Type[TranslationProvider]] = {
     "gemini": GeminiProvider,
 }
 
+# Current model IDs as of the DeepSeek V4 line. See
+# https://api-docs.deepseek.com/quick_start/pricing for the latest list.
 PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
-    "deepseek": {"model": "deepseek-chat"},
+    "deepseek": {"model": "deepseek-v4-flash"},
     "openai": {"model": "gpt-5.2-2025-12-11"},
     "anthropic": {"model": "claude-sonnet-4-5-20250514"},
     "grok": {"model": "grok-4.1-fast"},

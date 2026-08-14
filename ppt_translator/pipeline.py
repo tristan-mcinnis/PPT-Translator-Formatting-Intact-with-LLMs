@@ -204,6 +204,25 @@ def apply_table_properties(table, table_data):
                 print(f"Error setting cell properties: {exc}")
 
 
+def _collect_slide_texts(slide) -> Dict[str, str]:
+    """Extract all translatable text on a slide keyed by (kind, index, cell coords).
+
+    Returns a mapping of a stable text key to the extracted text, so callers can
+    batch-translate once per slide and then write results back by key.
+    """
+    collected: Dict[str, str] = {}
+    for shape_index, shape in enumerate(slide.shapes):
+        if shape.shape_type == MSO_SHAPE_TYPE.TABLE:
+            table = shape.table
+            for row_idx, row in enumerate(table.rows):
+                for col_idx, cell in enumerate(row.cells):
+                    key = f"table:{shape_index}:{row_idx}:{col_idx}"
+                    collected[key] = cell.text.strip()
+        elif hasattr(shape, "text"):
+            collected[f"shape:{shape_index}"] = shape.text.strip()
+    return collected
+
+
 def extract_text_from_slide(
     slide,
     slide_number: int,
@@ -212,26 +231,36 @@ def extract_text_from_slide(
     source_lang: str,
     target_lang: str,
 ):
-    """Extract text from a slide and optionally translate it."""
+    """Extract text from a slide and optionally translate it.
+
+    All text on the slide is translated in one batch call when a translator is
+    provided; formatting is captured per shape and reapplied on rebuild.
+    """
     slide_element = ET.Element("slide")
     slide_element.set("number", str(slide_number))
+
+    collected = _collect_slide_texts(slide)
+    if translator and collected:
+        translated = translator.translate_many(
+            list(collected.values()), source_lang, target_lang
+        )
+        collected = {key: translated.get(text, text) for key, text in collected.items()}
+
     for shape_index, shape in enumerate(slide.shapes):
         if shape.shape_type == MSO_SHAPE_TYPE.TABLE:
             table_element = ET.SubElement(slide_element, "table_element")
             table_element.set("shape_index", str(shape_index))
             table_data = get_table_properties(shape.table)
-            if translator:
-                for row in table_data["cells"]:
-                    for cell in row:
-                        cell["text"] = translator.translate(cell["text"], source_lang, target_lang)
+            for row_idx, row in enumerate(table_data["cells"]):
+                for col_idx, cell in enumerate(row):
+                    cell["text"] = collected.get(f"table:{shape_index}:{row_idx}:{col_idx}", cell["text"])
             props_element = ET.SubElement(table_element, "properties")
             props_element.text = json.dumps(table_data, indent=2)
         elif hasattr(shape, "text"):
             text_element = ET.SubElement(slide_element, "text_element")
             text_element.set("shape_index", str(shape_index))
             shape_data = get_shape_properties(shape)
-            if translator:
-                shape_data["text"] = translator.translate(shape_data["text"], source_lang, target_lang)
+            shape_data["text"] = collected.get(f"shape:{shape_index}", shape_data["text"])
             props_element = ET.SubElement(text_element, "properties")
             props_element.text = json.dumps(shape_data, indent=2)
     return slide_element

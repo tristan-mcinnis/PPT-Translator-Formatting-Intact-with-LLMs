@@ -19,9 +19,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-lang", default="en", help="Target language code (default: en).")
     parser.add_argument(
         "--provider",
-        default="openai",
+        default="deepseek",
         choices=list_providers(),
-        help="Model provider to use for translation.",
+        help="Model provider to use for translation (default: deepseek, model deepseek-v4-flash).",
     )
     parser.add_argument("--model", help="Optional model override for the chosen provider.")
     parser.add_argument(
