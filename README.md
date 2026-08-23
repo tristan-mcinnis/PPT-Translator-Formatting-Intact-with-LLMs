@@ -24,10 +24,12 @@ Convert your PowerPoint presentations to beautifully translated documents while 
 • 🔗 **Smart Caching**: Avoids duplicate API calls for repeated strings
 • 📦 **Batch Processing**: Convert entire directories of presentations at once
 • 🛡️ **Robust Processing**: Handles all PowerPoint content types with graceful fallbacks
+• 👁️ **Vision Audit**: Optional post-translation QA pass where DeepSeek's vision model inspects every rendered slide for overflow, truncation, or garbled text
 
 ## 🆕 Recent Updates
 
 - **DeepSeek V4 default**: DeepSeek is now the default provider using `deepseek-v4-flash` (fast, cheap); `deepseek-v4-pro` also available
+- **Visual audit (`--vision-audit`)**: render every rebuilt slide to an image and have the experimental vision model `deepseek-v4-flash-vision-exp` check for text overflow, truncation, garbled glyphs, untranslated leftovers and layout collisions; results land in `{deck}_translated_vision_audit.md`
 - **Batch translation**: All text on a slide is translated in one JSON-mode request instead of one API call per shape
 - **Script-aware filtering**: Text already in the target script (e.g. English on a zh → en run) is left untouched, saving tokens and avoiding double translation
 - **Gemini support**: Added Google Gemini as a translation provider
@@ -92,12 +94,16 @@ Common options:
 - `--max-chunk-size` – character limit per translation request (default: 1000).
 - `--max-workers` – number of threads used when scanning slides (default: 4).
 - `--keep-intermediate` – keep intermediate XML files for inspection/debugging.
+- `--vision-audit` – after rebuilding the deck, render every slide (via LibreOffice headless + `pdftoppm`) and ask DeepSeek's vision model (`deepseek-v4-flash-vision-exp`) to inspect each slide image for visual defects such as overflow, truncation, garbled glyphs, untranslated leftovers and layout collisions. Requires `DEEPSEEK_API_KEY`. Produces `{deck}_translated_vision_audit.md`.
+- `--vision-model` – override the vision model used by `--vision-audit`.
+- `--vision-dpi` – rendering resolution for the audit images (default: 100).
 
 The tool will generate:
 
 1. `{deck}_original.xml` – source deck contents.
 2. `{deck}_translated.xml` – translated content.
 3. `{deck}_translated.pptx` – rebuilt presentation with translated text and formatting intact.
+4. `{deck}_translated_vision_audit.md` – only with `--vision-audit`: the vision model's per-slide findings.
 
 ## 🧪 Testing
 

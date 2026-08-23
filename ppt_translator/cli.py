@@ -10,6 +10,7 @@ from .providers import ProviderConfigurationError, create_provider, list_provide
 from .translation import TranslationService
 from .pipeline import process_ppt_file
 from .utils import clean_path, iter_presentation_files
+from .vision_audit import DEFAULT_VISION_MODEL, VisionAuditError, build_default_vision_auditor
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,6 +42,26 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Keep intermediate XML files instead of deleting them.",
     )
+    parser.add_argument(
+        "--vision-audit",
+        action="store_true",
+        help=(
+            "After translation, render every slide of the rebuilt deck and "
+            f"inspect it with the DeepSeek vision model ({DEFAULT_VISION_MODEL}) "
+            "for overflow, truncation or garbled text. Requires DEEPSEEK_API_KEY."
+        ),
+    )
+    parser.add_argument(
+        "--vision-model",
+        default=DEFAULT_VISION_MODEL,
+        help=f"Vision model used with --vision-audit (default: {DEFAULT_VISION_MODEL}).",
+    )
+    parser.add_argument(
+        "--vision-dpi",
+        type=int,
+        default=100,
+        help="Resolution used to render slides for the visual audit (default: 100).",
+    )
     return parser
 
 
@@ -59,6 +80,13 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
 
     translator = TranslationService(provider, max_chunk_size=args.max_chunk_size)
 
+    vision_auditor = None
+    if args.vision_audit:
+        try:
+            vision_auditor = build_default_vision_auditor(model=args.vision_model)
+        except VisionAuditError as exc:
+            parser.error(str(exc))
+
     files = list(iter_presentation_files(target_path))
     if not files:
         print("No PowerPoint files were found at the provided location.")
@@ -74,6 +102,8 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
                 target_lang=args.target_lang,
                 max_workers=args.max_workers,
                 cleanup=not args.keep_intermediate,
+                vision_auditor=vision_auditor,
+                vision_dpi=args.vision_dpi,
             )
             if result is None:
                 print(f"Failed to process {ppt_file}.")

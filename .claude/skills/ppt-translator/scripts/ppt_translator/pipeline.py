@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -15,6 +16,14 @@ from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Pt
 
 from .translation import TranslationService
+from .vision_audit import (
+    VisionAuditError,
+    VisionAuditor,
+    collect_slide_texts,
+    print_audit_summary,
+    render_deck_to_images,
+    write_vision_audit_report,
+)
 
 
 def get_alignment_value(alignment_str: str | None):
@@ -89,7 +98,7 @@ def get_shape_properties(shape):
                 if getattr(paragraph, "space_after", None) is not None:
                     shape_data["space_after"] = paragraph.space_after
                 if getattr(paragraph, "alignment", None) is not None:
-                    shape_data["alignment"] = f"PP_ALIGN.{paragraph.alignment}" if paragraph.alignment else None
+                    shape_data["alignment"] = f"PP_ALIGN.{paragraph.alignment.name}" if paragraph.alignment else None
     return shape_data
 
 
@@ -166,7 +175,7 @@ def get_table_properties(table):
                     ):
                         cell_data["font_color"] = str(run.font.color.rgb)
                 if getattr(paragraph, "alignment", None) is not None:
-                    cell_data["alignment"] = f"PP_ALIGN.{paragraph.alignment}" if paragraph.alignment else None
+                    cell_data["alignment"] = f"PP_ALIGN.{paragraph.alignment.name}" if paragraph.alignment else None
             row_data.append(cell_data)
         table_data["cells"].append(row_data)
     return table_data
@@ -297,7 +306,7 @@ def ppt_to_xml(
                 slide_element = future.result()
                 root.append(slide_element)
                 intermediate_path = base_dir / f"slide_{slide_number}_{'translated' if translator else 'original'}.xml"
-                xml_str = minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")
+                xml_str = minidom.parseString(ET.tostring(slide_element)).toprettyxml(indent="  ")
                 with open(intermediate_path, "w", encoding="utf-8") as handle:
                     handle.write(xml_str)
         return minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")
@@ -352,6 +361,38 @@ def cleanup_intermediate_files(base_dir: Path, pattern: str = "slide_*.xml") -> 
         print(f"Warning: Could not clean up intermediate files: {exc}")
 
 
+def run_vision_audit(
+    output_ppt_path: Path,
+    base_dir: Path,
+    *,
+    vision_auditor: VisionAuditor,
+    vision_dpi: int = 100,
+    cleanup_images: bool = True,
+) -> None:
+    """Render the rebuilt deck and audit every slide with the vision model.
+
+    Writes a Markdown report next to the deck and prints a console summary.
+    Rendering/audit problems are reported but never abort the pipeline.
+    """
+    audit_dir = base_dir / f"{output_ppt_path.stem}_audit_images"
+    print(f"Running visual audit on {output_ppt_path.name}...")
+    try:
+        images = render_deck_to_images(output_ppt_path, audit_dir, dpi=vision_dpi)
+        expected_texts = collect_slide_texts(output_ppt_path)
+        issues = vision_auditor.audit_deck(images, expected_texts_by_slide=expected_texts)
+        report_path = base_dir / f"{output_ppt_path.stem}_vision_audit.md"
+        write_vision_audit_report(
+            report_path, output_ppt_path.name, issues, model=vision_auditor.model
+        )
+        print(f"Vision audit report saved: {report_path}")
+        print_audit_summary(issues)
+    except VisionAuditError as exc:
+        print(f"Visual audit skipped: {exc}")
+    finally:
+        if cleanup_images:
+            shutil.rmtree(audit_dir, ignore_errors=True)
+
+
 def process_ppt_file(
     ppt_path: Path,
     *,
@@ -360,6 +401,8 @@ def process_ppt_file(
     target_lang: str,
     max_workers: int = 4,
     cleanup: bool = True,
+    vision_auditor: VisionAuditor | None = None,
+    vision_dpi: int = 100,
 ) -> Optional[Path]:
     """Process a single PowerPoint file from extraction to translated output."""
     if not ppt_path.is_file():
@@ -405,6 +448,15 @@ def process_ppt_file(
     output_filename = f"{ppt_path.stem}_translated{ppt_path.suffix}"
     output_ppt_path = base_dir / output_filename
     create_translated_ppt(str(ppt_path), str(translated_output_path), str(output_ppt_path))
+
+    if vision_auditor is not None:
+        run_vision_audit(
+            output_ppt_path,
+            base_dir,
+            vision_auditor=vision_auditor,
+            vision_dpi=vision_dpi,
+            cleanup_images=cleanup,
+        )
 
     if cleanup:
         cleanup_intermediate_files(base_dir)
