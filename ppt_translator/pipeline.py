@@ -89,7 +89,7 @@ def get_shape_properties(shape):
                 if getattr(paragraph, "space_after", None) is not None:
                     shape_data["space_after"] = paragraph.space_after
                 if getattr(paragraph, "alignment", None) is not None:
-                    shape_data["alignment"] = f"PP_ALIGN.{paragraph.alignment}" if paragraph.alignment else None
+                    shape_data["alignment"] = f"PP_ALIGN.{paragraph.alignment.name}" if paragraph.alignment else None
     return shape_data
 
 
@@ -166,7 +166,7 @@ def get_table_properties(table):
                     ):
                         cell_data["font_color"] = str(run.font.color.rgb)
                 if getattr(paragraph, "alignment", None) is not None:
-                    cell_data["alignment"] = f"PP_ALIGN.{paragraph.alignment}" if paragraph.alignment else None
+                    cell_data["alignment"] = f"PP_ALIGN.{paragraph.alignment.name}" if paragraph.alignment else None
             row_data.append(cell_data)
         table_data["cells"].append(row_data)
     return table_data
@@ -297,7 +297,7 @@ def ppt_to_xml(
                 slide_element = future.result()
                 root.append(slide_element)
                 intermediate_path = base_dir / f"slide_{slide_number}_{'translated' if translator else 'original'}.xml"
-                xml_str = minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")
+                xml_str = minidom.parseString(ET.tostring(slide_element)).toprettyxml(indent="  ")
                 with open(intermediate_path, "w", encoding="utf-8") as handle:
                     handle.write(xml_str)
         return minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")

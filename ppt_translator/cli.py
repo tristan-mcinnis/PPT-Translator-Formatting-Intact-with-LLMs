@@ -67,7 +67,7 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
     exit_code = 0
     for ppt_file in files:
         try:
-            process_ppt_file(
+            result = process_ppt_file(
                 ppt_file,
                 translator=translator,
                 source_lang=args.source_lang,
@@ -75,6 +75,9 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
                 max_workers=args.max_workers,
                 cleanup=not args.keep_intermediate,
             )
+            if result is None:
+                print(f"Failed to process {ppt_file}.")
+                exit_code = 1
         except Exception as exc:  # pragma: no cover - CLI logging
             print(f"Error processing {ppt_file}: {exc}")
             exit_code = 1
