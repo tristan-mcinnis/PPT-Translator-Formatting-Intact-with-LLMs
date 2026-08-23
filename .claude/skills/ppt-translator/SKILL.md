@@ -1,6 +1,6 @@
 ---
 name: ppt-translator
-description: Translate PowerPoint presentations while preserving formatting (fonts, colors, alignment, tables). Supports multiple LLM providers (OpenAI, Anthropic, DeepSeek, Grok, Gemini). Use when translating .pptx files between languages, especially for CJK to/from English translations where text expansion/contraction is a concern.
+description: Translate PowerPoint presentations while preserving formatting (fonts, colors, alignment, tables). Supports multiple LLM providers (OpenAI, Anthropic, DeepSeek, Grok, Gemini) plus an optional post-translation visual audit using the deepseek-v4-flash-vision-exp vision model. Use when translating .pptx files between languages, especially for CJK to/from English translations where text expansion/contraction is a concern, or when you need to QA rendered slides for overflow, truncation, or garbled text.
 license: MIT - see LICENSE.txt
 ---
 
@@ -13,6 +13,7 @@ Translate PowerPoint presentations while preserving all formatting including fon
 - Translating `.pptx` files between languages
 - Batch translating multiple presentations in a directory
 - Preserving slide formatting during translation (especially CJK ↔ English)
+- QA-ing a translated deck with a vision language model (`--vision-audit`) to catch text overflow, truncation, garbled glyphs, untranslated leftovers, overlaps, or contrast problems
 - When you need to inspect intermediate XML for debugging
 
 ## Setup
@@ -67,6 +68,9 @@ python main.py /path/to/presentation.pptx \
 | `--max-chunk-size` | Characters per API request | `1000` |
 | `--max-workers` | Threads for slide extraction | `4` |
 | `--keep-intermediate` | Retain XML files for debugging | `false` |
+| `--vision-audit` | After translation, render every rebuilt slide to an image and inspect it with DeepSeek's vision model for overflow, truncation, garbled glyphs, untranslated text, overlaps, or contrast issues. Requires `DEEPSEEK_API_KEY` and LibreOffice + poppler (`pdftoppm`) installed. Writes `{deck}_translated_vision_audit.md`. | `false` |
+| `--vision-model` | Vision model used by `--vision-audit` | `deepseek-v4-flash-vision-exp` |
+| `--vision-dpi` | Rendering resolution for audit images | `100` |
 
 ## Output Files
 
@@ -75,6 +79,7 @@ For each input `presentation.pptx`, the tool generates:
 1. `presentation_original.xml` - Extracted source content (deleted unless `--keep-intermediate`)
 2. `presentation_translated.xml` - Translated content (deleted unless `--keep-intermediate`)
 3. `presentation_translated.pptx` - Final translated presentation with formatting intact
+4. `presentation_translated_vision_audit.md` - Only with `--vision-audit`: per-slide findings from the vision model, grouped by slide with severity (high/medium/low)
 
 ## Common Workflows
 
@@ -108,6 +113,16 @@ python main.py deck.pptx --provider openai --model gpt-5-mini
 ```bash
 python main.py deck.pptx --provider gemini --source-lang ko --target-lang en
 ```
+
+### Translate and Run the Visual Audit
+
+```bash
+python main.py deck.pptx --source-lang zh --target-lang en --vision-audit
+```
+
+After rebuilding the deck, every slide is rendered to a PNG (LibreOffice headless → `pdftoppm`) and sent to `deepseek-v4-flash-vision-exp` together with the slide's expected translated text. The model compares the rendering against the expected content and reports concrete visual defects. Read `{deck}_translated_vision_audit.md` afterwards and fix any HIGH-severity findings (e.g. by shortening text or enlarging boxes) before shipping the deck.
+
+Audit-only reruns on an already-translated deck are not needed — the audit runs automatically at the end of a `--vision-audit` run, and a failed audit never aborts the translation itself.
 
 ## Supported Languages
 
@@ -162,6 +177,21 @@ ANTHROPIC_API_KEY=sk-ant-...
 2. Try reducing `--max-chunk-size` for very long text blocks
 3. Ensure your API key has sufficient quota
 
+### "Visual audit skipped: ... tools that were not found"
+
+The visual audit needs LibreOffice (`soffice`) and poppler (`pdftoppm`):
+
+```bash
+brew install --cask libreoffice && brew install poppler   # macOS
+# apt install libreoffice poppler-utils                   # Debian/Ubuntu
+```
+
+If LibreOffice itself crashes on launch (seen on some macOS 26 + LibreOffice 25.x combos), upgrade it: `brew upgrade --cask libreoffice`.
+
+### "The visual audit requires a DeepSeek API key"
+
+The audit always calls DeepSeek's vision endpoint regardless of the translation provider, so `DEEPSEEK_API_KEY` must be set even when translating with another provider.
+
 ## Script Reference
 
 The `scripts/` directory contains:
@@ -174,3 +204,4 @@ The `scripts/` directory contains:
   - `pipeline.py` - PPT extraction and regeneration
   - `translation.py` - Chunking and caching
   - `providers/` - LLM provider implementations
+  - `vision_audit.py` - Slide rendering (LibreOffice + pdftoppm) and DeepSeek vision-model QA
